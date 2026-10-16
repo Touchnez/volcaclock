@@ -1,0 +1,25 @@
+VolcaClock
+Copyright (C) 2026 Gregoire Serikoff
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+The full text of the GNU General Public License version 2 is provided in the
+file GPL-2.0.md distributed with this program.
+
+Third-party components:
+Ableton Link, Copyright Ableton AG, licensed under GPL version 2 or later.
+asio, Copyright Christopher M. Kohlhoff, licensed under the Boost Software
+License 1.0.
+
+VolcaClock is an independent project. It is not affiliated with, endorsed by or
+sponsored by Korg, Novation, Focusrite, Ableton or Algoriddim. Volca is a
+trademark of Korg Inc.; Launch Control is a trademark of Focusrite Audio
+Engineering Ltd.; Ableton and Link are trademarks of Ableton AG; djay is a
+trademark of Algoriddim GmbH.

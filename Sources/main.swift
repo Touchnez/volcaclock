@@ -1,0 +1,218 @@
+import AppKit
+import CoreMIDI
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private let midi = MidiIO()
+    private lazy var engine = ClockEngine(midi: midi)
+    private var statusItem: NSStatusItem!
+    private var activity: NSObjectProtocol?
+    private let defaults = UserDefaults.standard
+
+    private var engineState: ClockEngine.State = .stopped
+    private var learning = false
+    private var control: MidiControl?
+    private var lastPress = Date.distantPast
+
+    private let offsets = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Empeche macOS de mettre l'app en veille (App Nap), ce qui degraderait la clock.
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            reason: "Emission de la MIDI clock")
+
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let menu = NSMenu()
+        menu.delegate = self
+        statusItem.menu = menu
+
+        if let data = defaults.data(forKey: "control") {
+            control = try? JSONDecoder().decode(MidiControl.self, from: data)
+        }
+
+        engine.onStateChange = { [weak self] state in
+            self?.engineState = state
+            self?.updateIcon()
+        }
+        midi.onChannelMessage = { [weak self] status, d1, d2 in
+            DispatchQueue.main.async {
+                self?.handleChannelMessage(status, d1, d2)
+            }
+        }
+        midi.onSetupChanged = { [weak self] in
+            self?.restoreDestination()
+        }
+
+        engine.setOffset(ms: defaults.integer(forKey: "offsetMs"))
+        restoreDestination()
+        engine.start()
+        updateIcon()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        engine.shutdown()
+    }
+
+    // MARK: Sortie MIDI
+
+    private func restoreDestination() {
+        let saved = Int32(truncatingIfNeeded: defaults.integer(forKey: "destinationID"))
+        if saved != 0, let dest = MidiIO.destinations().first(where: { $0.id == saved }) {
+            engine.setDestination(dest.ref)
+        } else {
+            engine.setDestination(0)
+        }
+    }
+
+    @objc private func chooseDestination(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? NSNumber else { return }
+        defaults.set(id.intValue, forKey: "destinationID")
+        restoreDestination()
+    }
+
+    // MARK: Bouton du Launch Control
+
+    private func handleChannelMessage(_ status: UInt8, _ d1: UInt8, _ d2: UInt8) {
+        let kind = status & 0xF0
+        // Appui seulement : note on avec velocite, ou CC avec valeur non nulle.
+        guard kind == 0x90 || kind == 0xB0, d2 > 0 else { return }
+        let received = MidiControl(kind: kind, channel: status & 0x0F, number: d1)
+
+        if learning {
+            learning = false
+            control = received
+            if let data = try? JSONEncoder().encode(received) {
+                defaults.set(data, forKey: "control")
+            }
+            updateIcon()
+            return
+        }
+
+        guard received == control else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastPress) > 0.15 else { return }
+        lastPress = now
+        engine.toggle()
+    }
+
+    @objc private func startLearning(_ sender: NSMenuItem) {
+        learning.toggle()
+        updateIcon()
+    }
+
+    @objc private func toggleFromMenu(_ sender: NSMenuItem) {
+        engine.toggle()
+    }
+
+    @objc private func chooseOffset(_ sender: NSMenuItem) {
+        defaults.set(sender.tag, forKey: "offsetMs")
+        engine.setOffset(ms: sender.tag)
+    }
+
+    @objc private func quit(_ sender: NSMenuItem) {
+        NSApp.terminate(nil)
+    }
+
+    // MARK: Interface
+
+    private func updateIcon() {
+        let symbol: String
+        if learning {
+            symbol = "hand.point.up.left"
+        } else {
+            switch engineState {
+            case .stopped: symbol = "metronome"
+            case .armed: symbol = "hourglass"
+            case .running: symbol = "play.fill"
+            }
+        }
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "VolcaClock") {
+            image.isTemplate = true
+            statusItem.button?.image = image
+            statusItem.button?.title = ""
+        } else {
+            statusItem.button?.image = nil
+            statusItem.button?.title = "VC"
+        }
+    }
+
+    private func stateLabel() -> String {
+        if learning { return "En attente d'un appui sur le bouton" }
+        switch engineState {
+        case .stopped: return "Volca : arret"
+        case .armed: return "Volca : arme, depart au prochain temps 1"
+        case .running: return "Volca : en marche"
+        }
+    }
+
+    private func item(_ title: String, _ action: Selector?, key: String = "") -> NSMenuItem {
+        let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        i.target = self
+        if action == nil { i.isEnabled = false }
+        return i
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let linkInfo = item("Link : lecture...", nil)
+        menu.addItem(linkInfo)
+        engine.status { tempo, peers in
+            linkInfo.title = peers == 0
+                ? "Link : aucun pair (active Link dans djay)"
+                : String(format: "Link : %.1f BPM, %d pair(s)", tempo, peers)
+        }
+        menu.addItem(item(stateLabel(), nil))
+        menu.addItem(.separator())
+
+        menu.addItem(item("Demarrer / Arreter", #selector(toggleFromMenu(_:))))
+        menu.addItem(.separator())
+
+        // Sortie MIDI
+        let outItem = NSMenuItem(title: "Sortie MIDI", action: nil, keyEquivalent: "")
+        let outMenu = NSMenu()
+        let savedID = defaults.integer(forKey: "destinationID")
+        let destinations = MidiIO.destinations()
+        if destinations.isEmpty {
+            outMenu.addItem(item("Aucun port MIDI detecte", nil))
+        }
+        for dest in destinations {
+            let d = item(dest.name, #selector(chooseDestination(_:)))
+            d.representedObject = NSNumber(value: dest.id)
+            d.state = Int(dest.id) == savedID ? .on : .off
+            outMenu.addItem(d)
+        }
+        outItem.submenu = outMenu
+        menu.addItem(outItem)
+
+        // Bouton
+        menu.addItem(item("Bouton : " + (control?.label ?? "aucun"), nil))
+        menu.addItem(item(learning ? "Annuler l'apprentissage" : "Apprendre le bouton...", #selector(startLearning(_:))))
+
+        // Decalage
+        let offsetItem = NSMenuItem(title: "Decalage", action: nil, keyEquivalent: "")
+        let offsetMenu = NSMenu()
+        let currentOffset = defaults.integer(forKey: "offsetMs")
+        for ms in offsets {
+            let o = item(String(format: "%+d ms", ms), #selector(chooseOffset(_:)))
+            o.tag = ms
+            o.state = ms == currentOffset ? .on : .off
+            offsetMenu.addItem(o)
+        }
+        offsetItem.submenu = offsetMenu
+        menu.addItem(offsetItem)
+
+        menu.addItem(.separator())
+        menu.addItem(item("Quitter VolcaClock", #selector(quit(_:)), key: "q"))
+    }
+}
+
+// Le code de demarrage s'execute sur le thread principal ; on le declare explicitement
+// pour que le compilateur accepte la creation du delegue (isole sur le thread principal).
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(.accessory)
+    app.run()
+}
