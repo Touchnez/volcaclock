@@ -13,6 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var control: MidiControl?
     private var lastPress = Date.distantPast
 
+    // Affichage du picto : tempo courant, nombre de pairs Link, clignotement.
+    private var currentTempo: Double = 0
+    private var currentPeers = 0
+    private var bpmTimer: Timer?
+    private var blinkTimer: Timer?
+    private var lastBeatBucket: Int?
+    private var blinkReset: DispatchWorkItem?
+    private var shownSignature = ""
+
     private let offsets = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,10 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = defaults.data(forKey: "control") {
             control = try? JSONDecoder().decode(MidiControl.self, from: data)
         }
+        midi.setFilter(control: control, learning: learning)
 
         engine.onStateChange = { [weak self] state in
-            self?.engineState = state
-            self?.updateIcon()
+            self?.setEngineState(state)
         }
         midi.onChannelMessage = { [weak self] status, d1, d2 in
             DispatchQueue.main.async {
@@ -46,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engine.setOffset(ms: defaults.integer(forKey: "offsetMs"))
         restoreDestination()
         engine.start()
+
+        // Rafraichit le tempo affiche dans le picto, une fois par seconde.
+        let bpm = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshTempo() }
+        RunLoop.main.add(bpm, forMode: .common)
+        bpmTimer = bpm
+        refreshTempo()
         updateIcon()
     }
 
@@ -84,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let data = try? JSONEncoder().encode(received) {
                 defaults.set(data, forKey: "control")
             }
+            midi.setFilter(control: control, learning: false)
             updateIcon()
             return
         }
@@ -97,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func startLearning(_ sender: NSMenuItem) {
         learning.toggle()
+        midi.setFilter(control: control, learning: learning)
         updateIcon()
     }
 
@@ -115,25 +132,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Interface
 
-    private func updateIcon() {
-        let symbol: String
-        if learning {
-            symbol = "hand.point.up.left"
+    private func setEngineState(_ state: ClockEngine.State) {
+        engineState = state
+        // Le clignotement n'a lieu que lorsque le Volca tourne : on n'anime pas
+        // le picto (ni ne reveille un timer rapide) quand il n'y a rien a marquer.
+        if state == .running {
+            startBlink()
         } else {
-            switch engineState {
-            case .stopped: symbol = "metronome"
-            case .armed: symbol = "hourglass"
-            case .running: symbol = "play.fill"
+            stopBlink()
+        }
+        updateIcon()
+    }
+
+    private func refreshTempo() {
+        engine.status { [weak self] tempo, peers in
+            self?.currentTempo = tempo
+            self?.currentPeers = peers
+            self?.updateIcon()
+        }
+    }
+
+    private func startBlink() {
+        guard blinkTimer == nil else { return }
+        lastBeatBucket = nil
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.blinkTick() }
+        RunLoop.main.add(t, forMode: .common)
+        blinkTimer = t
+    }
+
+    private func stopBlink() {
+        blinkTimer?.invalidate()
+        blinkTimer = nil
+        blinkReset?.cancel()
+        blinkReset = nil
+        statusItem.button?.alphaValue = 1.0
+        lastBeatBucket = nil
+    }
+
+    private func blinkTick() {
+        engine.beatPhase { [weak self] beat, tempo in
+            guard let self else { return }
+            self.currentTempo = tempo
+            guard tempo > 0 else { self.updateIcon(); return }
+            // Une tranche = 8 battues ; on marque chaque passage a la tranche suivante.
+            let bucket = Int((beat / 8.0).rounded(.down))
+            if let last = self.lastBeatBucket, bucket > last {
+                self.flash()
             }
+            self.lastBeatBucket = bucket
+            self.updateIcon()
         }
-        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "VolcaClock") {
-            image.isTemplate = true
-            statusItem.button?.image = image
-            statusItem.button?.title = ""
-        } else {
-            statusItem.button?.image = nil
-            statusItem.button?.title = "VC"
+    }
+
+    // Marque le passage a chaque tranche de 8 battues par une breve pulsation
+    // d'opacite du picto. On ne redessine pas l'image (qui ne change qu'avec le BPM).
+    private func flash() {
+        statusItem.button?.alphaValue = 0.3
+        blinkReset?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.statusItem.button?.alphaValue = 1.0
         }
+        blinkReset = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+    }
+
+    private func updateIcon() {
+        // On affiche le BPM seulement quand il y a un vrai pair Link (djay connecte) :
+        // le tempo est alors reel. Sans pair, le tempo ne veut rien dire, donc on
+        // reste en idle (mini-metronome seul). Tempo affiche avec un chiffre apres la virgule.
+        let label: String? = (currentPeers > 0 && currentTempo > 0)
+            ? String(format: "%.1f", currentTempo) : nil
+        // On ne redessine que si l'apparence change vraiment, pour eviter de
+        // reconstruire l'image a chaque reveil du timer.
+        let signature = "\(label ?? "idle")|\(learning)"
+        guard signature != shownSignature else { return }
+        shownSignature = signature
+
+        statusItem.button?.image = MenuIcon.image(label: label, learning: learning)
+        statusItem.button?.title = ""
     }
 
     private func stateLabel() -> String {
