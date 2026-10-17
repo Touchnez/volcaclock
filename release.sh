@@ -58,7 +58,7 @@ rm -rf "$STAGE"
 # Paquet source complet (avec le SDK Link a la version utilisee, sans historique git)
 SRC="$OUT/VolcaClock-$VERSION-source"
 mkdir -p "$SRC"
-cp -R Sources Info.plist build.sh release.sh LICENSE README.md LISEZMOI.md LISEZMOI-UTILISATEUR.md .gitignore "$SRC/"
+cp -R Sources Resources Info.plist build.sh release.sh LICENSE README.md LISEZMOI.md LISEZMOI-UTILISATEUR.md .gitignore "$SRC/"
 rsync -a --exclude ".git" Vendor "$SRC/"
 git -C Vendor/link rev-parse HEAD > "$SRC/LINK_VERSION.txt"
 (cd "$OUT" && ditto -c -k --keepParent "VolcaClock-$VERSION-source" "VolcaClock-$VERSION-source.zip")

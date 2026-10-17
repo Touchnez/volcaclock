@@ -23,6 +23,8 @@ The app is not signed by Apple (no paid developer account), so macOS warns you o
 3. Pick your MIDI output, then "Learn button..." and press the controller button you want to use.
 4. Press it: the icon shows an hourglass (armed), then a play sign when your machine starts on the downbeat. Press again to stop.
 
+The menu follows the macOS language: French on a French system, English everywhere else.
+
 ## Build from source
 
 Requires Apple's command line tools (`xcode-select --install`). Then, in the project folder:
