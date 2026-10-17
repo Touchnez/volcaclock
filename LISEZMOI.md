@@ -11,6 +11,8 @@ Le mode d'emploi destiné aux autres utilisateurs est dans LISEZMOI-UTILISATEUR.
 3. Lance `bash build.sh`. Au premier lancement, le script télécharge le SDK Ableton Link depuis GitHub. L'app est compilée pour Apple Silicon et Intel, compatible macOS 12 et suivants.
 4. L'app se trouve dans `build/VolcaClock.app`.
 
+Traductions : le code garde les textes en français comme clés (`NSLocalizedString`). Les fichiers `Resources/fr.lproj` et `Resources/en.lproj` donnent le texte affiché selon la langue de macOS (anglais par défaut). Pour ajouter un texte, mets-le dans `NSLocalizedString(...)` et ajoute la ligne dans les deux fichiers `Localizable.strings`.
+
 ## 2. Publier
 
 `bash release.sh` recompile l'app et crée dans le dossier `release/` deux archives : `VolcaClock-1.0.zip` (l'app, le mode d'emploi utilisateur, la licence) et `VolcaClock-1.0-source.zip` (le code source complet, SDK Link compris). La licence GPL impose de publier les deux ensemble, au même endroit.

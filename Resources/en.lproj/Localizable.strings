@@ -1,0 +1,26 @@
+/* VolcaClock - English. Keys are the French source strings. */
+
+"Link : lecture..." = "Link: reading...";
+"Link : aucun pair (active Link dans djay)" = "Link: no peers (enable Link in djay)";
+"Link : %.1f BPM, %d pair(s)" = "Link: %.1f BPM, %d peer(s)";
+
+"En attente d'un appui sur le bouton" = "Waiting for a button press";
+"Volca : arret" = "Volca: stopped";
+"Volca : arme, depart au prochain temps 1" = "Volca: armed, starts on the next downbeat";
+"Volca : en marche" = "Volca: running";
+
+"Demarrer / Arreter" = "Start / Stop";
+
+"Sortie MIDI" = "MIDI Output";
+"Aucun port MIDI detecte" = "No MIDI port found";
+"Port sans nom" = "Unnamed port";
+
+"Bouton : %@" = "Button: %@";
+"aucun" = "none";
+"%@ %d, canal %d" = "%@ %d, channel %d";
+"Annuler l'apprentissage" = "Cancel learning";
+"Apprendre le bouton..." = "Learn button...";
+
+"Decalage" = "Latency offset";
+
+"Quitter VolcaClock" = "Quit VolcaClock";

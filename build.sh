@@ -43,6 +43,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp build/VolcaClock "$APP/Contents/MacOS/VolcaClock"
 cp Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Resources"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"
 # Retire les attributs etendus (Finder info, quarantaine) que codesign refuse.
 xattr -cr "$APP"
 codesign --force --sign - "$APP"

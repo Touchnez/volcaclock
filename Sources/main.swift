@@ -213,11 +213,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func stateLabel() -> String {
-        if learning { return "En attente d'un appui sur le bouton" }
+        if learning { return NSLocalizedString("En attente d'un appui sur le bouton", comment: "") }
         switch engineState {
-        case .stopped: return "Volca : arret"
-        case .armed: return "Volca : arme, depart au prochain temps 1"
-        case .running: return "Volca : en marche"
+        case .stopped: return NSLocalizedString("Volca : arret", comment: "")
+        case .armed: return NSLocalizedString("Volca : arme, depart au prochain temps 1", comment: "")
+        case .running: return NSLocalizedString("Volca : en marche", comment: "")
         }
     }
 
@@ -231,26 +231,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let linkInfo = item("Link : lecture...", nil)
+        let linkInfo = item(NSLocalizedString("Link : lecture...", comment: ""), nil)
         menu.addItem(linkInfo)
         engine.status { tempo, peers in
             linkInfo.title = peers == 0
-                ? "Link : aucun pair (active Link dans djay)"
-                : String(format: "Link : %.1f BPM, %d pair(s)", tempo, peers)
+                ? NSLocalizedString("Link : aucun pair (active Link dans djay)", comment: "")
+                : String(format: NSLocalizedString("Link : %.1f BPM, %d pair(s)", comment: "tempo, nombre de pairs"), tempo, peers)
         }
         menu.addItem(item(stateLabel(), nil))
         menu.addItem(.separator())
 
-        menu.addItem(item("Demarrer / Arreter", #selector(toggleFromMenu(_:))))
+        menu.addItem(item(NSLocalizedString("Demarrer / Arreter", comment: ""), #selector(toggleFromMenu(_:))))
         menu.addItem(.separator())
 
         // Sortie MIDI
-        let outItem = NSMenuItem(title: "Sortie MIDI", action: nil, keyEquivalent: "")
+        let outItem = NSMenuItem(title: NSLocalizedString("Sortie MIDI", comment: ""), action: nil, keyEquivalent: "")
         let outMenu = NSMenu()
         let savedID = defaults.integer(forKey: "destinationID")
         let destinations = MidiIO.destinations()
         if destinations.isEmpty {
-            outMenu.addItem(item("Aucun port MIDI detecte", nil))
+            outMenu.addItem(item(NSLocalizedString("Aucun port MIDI detecte", comment: ""), nil))
         }
         for dest in destinations {
             let d = item(dest.name, #selector(chooseDestination(_:)))
@@ -262,11 +262,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(outItem)
 
         // Bouton
-        menu.addItem(item("Bouton : " + (control?.label ?? "aucun"), nil))
-        menu.addItem(item(learning ? "Annuler l'apprentissage" : "Apprendre le bouton...", #selector(startLearning(_:))))
+        let controlLabel = control?.label ?? NSLocalizedString("aucun", comment: "aucun bouton appris")
+        menu.addItem(item(String(format: NSLocalizedString("Bouton : %@", comment: "bouton appris"), controlLabel), nil))
+        menu.addItem(item(learning ? NSLocalizedString("Annuler l'apprentissage", comment: "") : NSLocalizedString("Apprendre le bouton...", comment: ""), #selector(startLearning(_:))))
 
         // Decalage
-        let offsetItem = NSMenuItem(title: "Decalage", action: nil, keyEquivalent: "")
+        let offsetItem = NSMenuItem(title: NSLocalizedString("Decalage", comment: "decalage de latence"), action: nil, keyEquivalent: "")
         let offsetMenu = NSMenu()
         let currentOffset = defaults.integer(forKey: "offsetMs")
         for ms in offsets {
@@ -279,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(offsetItem)
 
         menu.addItem(.separator())
-        menu.addItem(item("Quitter VolcaClock", #selector(quit(_:)), key: "q"))
+        menu.addItem(item(NSLocalizedString("Quitter VolcaClock", comment: ""), #selector(quit(_:)), key: "q"))
     }
 }
 
