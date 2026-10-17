@@ -28,7 +28,7 @@ for ARCH in $ARCHS; do
   echo "Compilation de l'app (Swift) pour $ARCH..."
   swiftc -O -swift-version 5 -target "$TARGET" \
     -import-objc-header Sources/LinkBridge.h \
-    Sources/main.swift Sources/MidiIO.swift Sources/ClockEngine.swift \
+    Sources/main.swift Sources/MidiIO.swift Sources/ClockEngine.swift Sources/MenuIcon.swift \
     "build/LinkBridge-$ARCH.o" \
     -lc++ -framework CoreMIDI -framework AppKit \
     -o "build/VolcaClock-$ARCH"
@@ -43,6 +43,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp build/VolcaClock "$APP/Contents/MacOS/VolcaClock"
 cp Info.plist "$APP/Contents/Info.plist"
+# Retire les attributs etendus (Finder info, quarantaine) que codesign refuse.
+xattr -cr "$APP"
 codesign --force --sign - "$APP"
 
 echo "Termine : $APP ($(lipo -archs "$APP/Contents/MacOS/VolcaClock"))"

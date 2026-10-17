@@ -104,6 +104,23 @@ final class ClockEngine {
         }
     }
 
+    /// Position actuelle sur la timeline Link, en battements (completion : battement, tempo).
+    /// Sert au clignotement du picto, aligne sur la timeline partagee avec djay.
+    func beatPhase(_ completion: @escaping @MainActor (Double, Double) -> Void) {
+        queue.async {
+            let tempo = self.lastTempo
+            guard tempo > 0 else {
+                DispatchQueue.main.async { completion(0, 0) }
+                return
+            }
+            var nowMicros: Int64 = 0
+            var nowHost: UInt64 = 0
+            lb_sample(&nowMicros, &nowHost)
+            let beat = lb_beat_at(nowMicros, self.quantum)
+            DispatchQueue.main.async { completion(beat.isFinite ? beat : 0, tempo) }
+        }
+    }
+
     private func setState(_ s: State) {
         state = s
         let callback = onStateChange
@@ -116,9 +133,22 @@ final class ClockEngine {
         UInt64(us) * 1000 * timebaseDenom / timebaseNumer
     }
 
+    // Garde-fou : nombre maximum d'impulsions emises en une passe. L'horizon de
+    // 40 ms ne couvre que quelques impulsions, meme a tempo tres eleve ; au-dela,
+    // c'est que la timeline Link est aberrante, et on evite une boucle sans fin.
+    private let maxTicksPerStep = 64
+
     private func step() {
         lb_capture()
-        lastTempo = lb_tempo()
+        let tempo = lb_tempo()
+
+        // Un tempo nul, infini ou NaN signifie une session Link invalide : on ne
+        // calcule rien ce tour-ci et on se recalera a la prochaine passe valable.
+        guard tempo.isFinite, tempo > 0 else {
+            nextTick = nil
+            return
+        }
+        lastTempo = tempo
 
         guard destination != 0 else {
             nextTick = nil
@@ -131,6 +161,10 @@ final class ClockEngine {
 
         // Position (en impulsions) qui doit sortir maintenant, decalage compris.
         let currentTick = lb_beat_at(nowMicros - offsetMicros, quantum) * Double(ticksPerBeat)
+        guard currentTick.isFinite else {
+            nextTick = nil
+            return
+        }
 
         // Premier passage, ou saut de timeline (nouvelle session Link) : on se recale.
         if let n = nextTick, abs(Double(n) - currentTick) < 48 {
@@ -143,7 +177,8 @@ final class ClockEngine {
         let horizon = nowMicros + lookaheadMicros
         let ticksPerBar = Int64(quantum) * ticksPerBeat
 
-        while true {
+        var emitted = 0
+        while emitted < maxTicksPerStep {
             let t = lb_time_at_beat(Double(k) / Double(ticksPerBeat), quantum) + offsetMicros
             if t > horizon { break }
             let host: UInt64 = t > nowMicros ? nowHost + microsToHost(t - nowMicros) : 0
@@ -154,6 +189,7 @@ final class ClockEngine {
             }
             midi.sendRealtime(0xF8, to: destination, at: host)
             k += 1
+            emitted += 1
         }
         nextTick = k
     }

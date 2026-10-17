@@ -1,5 +1,6 @@
 import CoreMIDI
 import Foundation
+import os
 
 /// Bouton appris sur le controleur : type (note 0x90 ou CC 0xB0), canal, numero.
 struct MidiControl: Codable, Equatable {
@@ -25,11 +26,20 @@ final class MidiIO {
     private var inPort = MIDIPortRef()
     private var connectedSources: [MIDIEndpointRef] = []
 
+    // Filtre applique directement sur le thread temps reel de CoreMIDI, pour ne
+    // reveiller le thread principal que sur les messages reellement utiles :
+    // tous les candidats pendant l'apprentissage, sinon seulement le bouton appris.
+    // Sans cela, un appareil bavard (CC continu, aftertouch, sequenceur) inondait
+    // la file principale et finissait par figer l'interface.
+    private var filterLock = os_unfair_lock_s()
+    private var activeControl: MidiControl?
+    private var isLearning = false
+
     // Tampon reutilise pour l'envoi : aucune allocation par message.
     // Utilise uniquement depuis la file du moteur d'horloge.
     private let sendBuffer = UnsafeMutablePointer<MIDIEventList>.allocate(capacity: 1)
 
-    /// Appele sur le thread CoreMIDI a chaque message de canal recu (status, data1, data2).
+    /// Appele sur le thread CoreMIDI a chaque message de canal retenu (status, data1, data2).
     var onChannelMessage: ((UInt8, UInt8, UInt8) -> Void)?
     /// Appele sur le thread principal quand un appareil MIDI est branche ou debranche.
     var onSetupChanged: (@MainActor () -> Void)?
@@ -50,6 +60,15 @@ final class MidiIO {
         connectAllSources()
     }
 
+    /// Etat de filtrage, pousse depuis le thread principal a chaque changement de
+    /// bouton appris ou de mode apprentissage.
+    func setFilter(control: MidiControl?, learning: Bool) {
+        os_unfair_lock_lock(&filterLock)
+        activeControl = control
+        isLearning = learning
+        os_unfair_lock_unlock(&filterLock)
+    }
+
     private func handle(_ listPtr: UnsafePointer<MIDIEventList>) {
         for packetPtr in listPtr.unsafeSequence() {
             var packet = packetPtr.pointee
@@ -60,8 +79,25 @@ final class MidiIO {
             // Seuls les messages de canal MIDI 1.0 (type UMP 2) nous interessent.
             for w in words where (w >> 28) == 0x2 {
                 let status = UInt8((w >> 16) & 0xFF)
+                let kind = status & 0xF0
+                // On ne garde que ce qui peut etre un appui sur un bouton : note on
+                // (0x90) ou CC (0xB0) avec une valeur non nulle. Tout le reste
+                // (note off, aftertouch, pitch bend, program change, CC a zero) est
+                // ecarte ici, sur le thread MIDI, sans toucher au thread principal.
+                guard kind == 0x90 || kind == 0xB0 else { continue }
                 let d1 = UInt8((w >> 8) & 0x7F)
                 let d2 = UInt8(w & 0x7F)
+                guard d2 > 0 else { continue }
+
+                os_unfair_lock_lock(&filterLock)
+                let learning = isLearning
+                let matches = activeControl.map {
+                    $0.kind == kind && $0.channel == (status & 0x0F) && $0.number == d1
+                } ?? false
+                os_unfair_lock_unlock(&filterLock)
+
+                // Hors apprentissage, seul le bouton appris remonte.
+                guard learning || matches else { continue }
                 onChannelMessage?(status, d1, d2)
             }
         }
