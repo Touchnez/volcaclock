@@ -26,10 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var beatImage: NSImage?   // image avec le mini-metronome masque (clignotement du battement)
 
     private let offsets = [-20, -15, -10, -5, 0, 5, 10, 15, 20]
-    // Temps de la mesure (0 a 3) qui porte le flash de mesure. La base est la phase
-    // de mesure Link (elle suit la grille de djay) ; ce decalage n'est qu'une
-    // correction optionnelle si le downbeat de djay ne colle pas a l'oreille.
-    private let beatsPerBar = 4
+    // Longueur du cycle de mesure, en battues (le flash fort y tombe une fois). Reglable.
+    private let measureChoices = [2, 4, 8, 16]
+    private var measureBeats = 8
+    // Temps (0 a measureBeats-1) qui porte le flash de mesure. La base suit la grille
+    // de djay via la phase Link ; ce decalage n'est qu'une correction optionnelle
+    // (choix de la barre, ou recalage si le downbeat de djay ne colle pas a l'oreille).
     private var downbeatOffset = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -46,7 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = defaults.data(forKey: "control") {
             control = try? JSONDecoder().decode(MidiControl.self, from: data)
         }
-        downbeatOffset = (defaults.object(forKey: "downbeatOffset") as? Int).map { (($0 % beatsPerBar) + beatsPerBar) % beatsPerBar } ?? 0
+        if let m = defaults.object(forKey: "measureBeats") as? Int, measureChoices.contains(m) {
+            measureBeats = m
+        }
+        downbeatOffset = (defaults.object(forKey: "downbeatOffset") as? Int).map { (($0 % measureBeats) + measureBeats) % measureBeats } ?? 0
         midi.setFilter(control: control, learning: learning)
 
         engine.onStateChange = { [weak self] state in
@@ -136,7 +141,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func chooseDownbeat(_ sender: NSMenuItem) {
-        downbeatOffset = ((sender.tag % beatsPerBar) + beatsPerBar) % beatsPerBar
+        downbeatOffset = ((sender.tag % measureBeats) + measureBeats) % measureBeats
+        defaults.set(downbeatOffset, forKey: "downbeatOffset")
+    }
+
+    @objc private func chooseMeasure(_ sender: NSMenuItem) {
+        measureBeats = max(1, sender.tag)
+        defaults.set(measureBeats, forKey: "measureBeats")
+        downbeatOffset = ((downbeatOffset % measureBeats) + measureBeats) % measureBeats
         defaults.set(downbeatOffset, forKey: "downbeatOffset")
     }
 
@@ -199,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.scheduledBeatIndex = beatIndex
             // Flash de mesure sur le downbeat de la phase de mesure Link (suit la grille
             // de djay), avec la correction optionnelle choisie.
-            let isCycle = ((beatIndex % self.beatsPerBar) + self.beatsPerBar) % self.beatsPerBar == self.downbeatOffset
+            let isCycle = ((beatIndex % self.measureBeats) + self.measureBeats) % self.measureBeats == self.downbeatOffset
             // Programme la pulsation a l'instant precis du prochain temps.
             DispatchQueue.main.asyncAfter(deadline: DispatchTime(uptimeNanoseconds: fireNanos)) { [weak self] in
                 guard let self, self.blinkTimer != nil else { return }
@@ -225,7 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
 
-    // Mesure de 8 : toute l'icone clignote par une baisse d'opacite.
+    // Mesure : toute l'icone clignote par une baisse d'opacite.
     private func cyclePulse(duration: TimeInterval) {
         statusItem.button?.image = normalImage
         statusItem.button?.alphaValue = 0.12
@@ -327,11 +339,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         offsetItem.submenu = offsetMenu
         menu.addItem(offsetItem)
 
+        // Measure flash : longueur du cycle (en battues) entre deux flashs de l'icone entiere.
+        let measItem = NSMenuItem(title: "Measure flash", action: nil, keyEquivalent: "")
+        let measMenu = NSMenu()
+        for n in measureChoices {
+            let m = item("\(n) beats", #selector(chooseMeasure(_:)))
+            m.tag = n
+            m.state = n == measureBeats ? .on : .off
+            measMenu.addItem(m)
+        }
+        measItem.submenu = measMenu
+        menu.addItem(measItem)
+
         // Downbeat : correction optionnelle du temps de la mesure qui porte le flash
         // (la base suit deja la grille de djay via la phase Link).
-        let downItem = NSMenuItem(title: "Downbeat (measure flash)", action: nil, keyEquivalent: "")
+        let downItem = NSMenuItem(title: "Downbeat", action: nil, keyEquivalent: "")
         let downMenu = NSMenu()
-        for n in 0..<beatsPerBar {
+        for n in 0..<measureBeats {
             let d = item("Beat \(n + 1)", #selector(chooseDownbeat(_:)))
             d.tag = n
             d.state = n == downbeatOffset ? .on : .off
