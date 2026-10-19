@@ -13,14 +13,14 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.1</string>
+    <string>1.0.2</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>VolcaClock rejoint la session Ableton Link de djay sur ce Mac pour suivre son tempo.</string>
+    <string>VolcaClock joins djay's Ableton Link session on this Mac to follow its tempo.</string>
 </dict>
 </plist>

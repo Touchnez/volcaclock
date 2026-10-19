@@ -14,14 +14,16 @@ enum MenuIcon {
 
     /// - label : tempo deja formate (ex. "108.5"), ou nil pour l'idle (metronome seul).
     /// - learning : pendant l'apprentissage, on montre la main dediee.
-    static func image(label: String?, learning: Bool) -> NSImage {
+    /// - metronomeHidden : masque le mini-metronome (zone pleine) ; sert au clignotement
+    ///   du metronome seul, a chaque battement.
+    static func image(label: String?, learning: Bool, metronomeHidden: Bool = false) -> NSImage {
         if learning {
             let img = NSImage(systemSymbolName: "hand.point.up.left", accessibilityDescription: "VolcaClock")
                 ?? NSImage(size: NSSize(width: pointSize, height: pointSize))
             img.isTemplate = true
             return img
         }
-        return pill(text: label ?? idleText)
+        return pill(text: label ?? idleText, metronomeHidden: metronomeHidden)
     }
 
     private static func numFont(_ pt: CGFloat) -> NSFont {
@@ -36,7 +38,7 @@ enum MenuIcon {
     private static let hintW: CGFloat = 9.0
     private static let numPt: CGFloat = 12.5
 
-    private static func pill(text: String?) -> NSImage {
+    private static func pill(text: String?, metronomeHidden: Bool) -> NSImage {
         let scale = pointSize / baseH
         let numW: CGFloat = text.map { ($0 as NSString).size(withAttributes: [.font: numFont(numPt)]).width } ?? 0
         let contentW = padL + hintW + (text != nil ? gap + numW : 0) + padR
@@ -54,11 +56,12 @@ enum MenuIcon {
             xRadius: 5.5, yRadius: 5.5)
         pill.fill()
 
-        // Motifs evides (transparents) dans la pilule pleine.
+        // Motifs evides (transparents) dans la pilule pleine. Le metronome peut etre
+        // masque (zone pleine) pour le clignotement du metronome seul a chaque battement.
         let g = NSGraphicsContext.current!
         g.saveGraphicsState()
         g.compositingOperation = .destinationOut
-        drawMetroHint(x: inset + padL)
+        if !metronomeHidden { drawMetroHint(x: inset + padL) }
         if let text { drawNumber(text, x: inset + padL + hintW + gap) }
         g.restoreGraphicsState()
 
