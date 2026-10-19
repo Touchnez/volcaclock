@@ -104,20 +104,27 @@ final class ClockEngine {
         }
     }
 
-    /// Position actuelle sur la timeline Link, en battements (completion : battement, tempo).
-    /// Sert au clignotement du picto, aligne sur la timeline partagee avec djay.
-    func beatPhase(_ completion: @escaping @MainActor (Double, Double) -> Void) {
+    /// Programme le prochain temps : renvoie l'instant d'horloge machine (en nanosecondes,
+    /// base DispatchTime.uptimeNanoseconds) du prochain temps, son index, et le tempo.
+    /// Calcule sur la timeline Link pour un clignotement cale au temps, sans latence de
+    /// sondage. Le choix mesure/battement est fait par l'appelant (decalage reglable).
+    func nextBeatSchedule(_ completion: @escaping @MainActor (_ fireNanos: UInt64, _ beatIndex: Int, _ tempo: Double) -> Void) {
         queue.async {
             let tempo = self.lastTempo
-            guard tempo > 0 else {
-                DispatchQueue.main.async { completion(0, 0) }
-                return
-            }
             var nowMicros: Int64 = 0
             var nowHost: UInt64 = 0
             lb_sample(&nowMicros, &nowHost)
             let beat = lb_beat_at(nowMicros, self.quantum)
-            DispatchQueue.main.async { completion(beat.isFinite ? beat : 0, tempo) }
+            guard tempo > 0, beat.isFinite else {
+                DispatchQueue.main.async { completion(0, 0, tempo) }
+                return
+            }
+            let nextBeatIndex = Int(beat.rounded(.down)) + 1
+            let beatMicros = lb_time_at_beat(Double(nextBeatIndex), self.quantum)
+            let dt = beatMicros - nowMicros
+            let fireHost = dt > 0 ? nowHost &+ self.microsToHost(dt) : nowHost
+            let fireNanos = fireHost * self.timebaseNumer / self.timebaseDenom
+            DispatchQueue.main.async { completion(fireNanos, nextBeatIndex, tempo) }
         }
     }
 

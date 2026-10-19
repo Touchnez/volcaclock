@@ -10,7 +10,7 @@ struct MidiControl: Codable, Equatable {
 
     var label: String {
         let type = kind == 0x90 ? "Note" : "CC"
-        return "\(type) \(number), canal \(Int(channel) + 1)"
+        return "\(type) \(number), channel \(Int(channel) + 1)"
     }
 }
 
@@ -128,7 +128,7 @@ final class MidiIO {
         if MIDIObjectGetStringProperty(obj, kMIDIPropertyDisplayName, &cf) == 0, let s = cf?.takeRetainedValue() {
             return s as String
         }
-        return "Port sans nom"
+        return "Unnamed port"
     }
 
     static func uniqueID(_ obj: MIDIObjectRef) -> Int32 {
